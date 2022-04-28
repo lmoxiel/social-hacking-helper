@@ -1,0 +1,436 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AWS Speech AI Workshop for Utilities / Business Services / Call Transcription Service.
+  This service takes new call recordings from the raw data tier of the data lake and transcribes them into text.
+  The transcription result is written to the prepared data tier of the data lake.
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Parameters.
+# ---------------------------------------------------------------------------------------------------------------------
+
+Parameters:
+
+  # Standard parameters that should go into every service.
+
+  Stage:
+    Description: "Environment stage (dev, test, ..., prod)"
+    Type: "String"
+  Workload:
+    Description: "Short name of the overall workload this service belongs to"
+    Type: "String"
+  Context:
+    Description: "Short name of the context for this service (e.g. backoffice services versus business services)"
+    Type: "String"
+  Service:
+    Description: "Short name of this service"
+    Type: "String"
+  WorkloadLongName:
+    Description: "Long name of the overall workload this service belongs to"
+    Type: "String"
+  ContextLongName:
+    Description: "Long name of the context for this service (e.g. backoffice services versus business services)"
+    Type: "String"
+  ServiceLongName:
+    Description: "Long name of this service"
+    Type: "String"
+  LogLevel:
+    Description: "Log level for Lambda functions"
+    Type: "String"
+    Default: "DEBUG"
+  LogRetentionInDays:
+    Description: "CloudWatch Logs retention period"
+    Type: "Number"
+    Default: 7
+
+  # Parameters specific to this service.
+
+  # RunCallTranscriptionFunctionName:
+  #   Description: "Name suffix for the RunCallTranscriptionFunction"
+  #   Type: "String"
+  #   Default: "run-call-transcription"
+
+  # RenameTranscriptionResponseFunctionName:
+  #   Description: "Name suffix for the RenameTranscriptionResponseFunction"
+  #   Type: "String"
+  #   Default: "rename-transcription-response"
+
+  RunCallAnalyticsFunctionName:
+    Description: "Name suffix for the RunCallAnalyticsFunction"
+    Type: "String"
+    Default: "run-call-analytics"
+
+  CreateHtmlOverviewFunctionName:
+    Description: "Name suffix for the CreateHtmlOverviewFunction"
+    Type: "String"
+    Default: "create-html-overview"
+
+  SplitTranscriptsFunctionName:
+    Description: "Name suffix for the SplitTranscriptsFunction"
+    Type: "String"
+    Default: "split-transcripts"
+
+  # Parameters from AWS SSM Parameter Store for shared resources.
+
+  DataLakeDataBucketArn:
+    Type: "AWS::SSM::Parameter::Value<String>"
+    Description: "ARN of the shared DataLakeDataBucket"
+    Default: "/dev/eecc/s3/dl-data/arn"
+  DataLakeDataBucketName:
+    Type: "AWS::SSM::Parameter::Value<String>"
+    Description: "Name of the shared DataLakeDataBucket"
+    Default: "/dev/eecc/s3/dl-data/name"
+
+  # NewDataLakeRawDataTopicArn:
+  #   Type: "AWS::SSM::Parameter::Value<String>"
+  #   Description: "ARN of the shared NewDataLakeRawDataTopic"
+  #   Default: "/dev/eecc/sns/new-datalake-raw-data/arn"
+  # NewDataLakeRawDataTopicName:
+  #   Type: "AWS::SSM::Parameter::Value<String>"
+  #   Description: "Name of the shared NewDataLakeRawDataTopic"
+  #   Default: "/dev/eecc/sns/new-datalake-raw-data/name"
+
+  # NewDataLakePreparedDataTopicArn:
+  #   Type: "AWS::SSM::Parameter::Value<String>"
+  #   Description: "ARN of the shared NewDataLakePreparedDataTopic"
+  #   Default: "/dev/eecc/sns/new-datalake-prepared-data/arn"
+  # NewDataLakePreparedDataTopicName:
+  #   Type: "AWS::SSM::Parameter::Value<String>"
+  #   Description: "Name of the shared NewDataLakePreparedDataTopic"
+  #   Default: "/dev/eecc/sns/new-datalake-prepared-data/name"
+
+  # DataLakeRawDataBucketArn:
+  #   Type: "AWS::SSM::Parameter::Value<String>"
+  #   Description: "ARN of the shared DataLakeRawDataBucket"
+  #   Default: "/dev/eecc/s3/dl-raw-data/arn"
+  # DataLakeRawDataBucketName:
+  #   Type: "AWS::SSM::Parameter::Value<String>"
+  #   Description: "Name of the shared DataLakeRawDataBucket"
+  #   Default: "/dev/eecc/s3/dl-raw-data/name"
+
+  # DataLakePreparedDataBucketArn:
+  #   Type: "AWS::SSM::Parameter::Value<String>"
+  #   Description: "ARN of the shared DataLakePreparedDataBucket"
+  #   Default: "/dev/eecc/s3/dl-prepared-data/arn"
+  # DataLakePreparedDataBucketName:
+  #   Type: "AWS::SSM::Parameter::Value<String>"
+  #   Description: "Name of the shared DataLakePreparedDataBucket"
+  #   Default: "/dev/eecc/s3/dl-prepared-data/name"
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Mappings.
+# ---------------------------------------------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Globals.
+# ---------------------------------------------------------------------------------------------------------------------
+
+Globals:
+
+  # Globals for serverless functions.
+
+  Function:
+    Runtime: "python3.8"
+    Timeout: 5
+    Tracing: "Active"
+    MemorySize: 512
+    Environment:
+      Variables:
+        STAGE:              !Ref "Stage"
+        WORKLOAD:           !Ref "Workload"
+        CONTEXT:            !Ref "Context"
+        SERVICE:            !Ref "Service"
+        WORKLOAD_LONG_NAME: !Ref "WorkloadLongName"
+        CONTEXT_LONG_NAME:  !Ref "ContextLongName"
+        SERVICE_LONG_NAME:  !Ref "ServiceLongName"
+        LOG_LEVEL:          !Ref "LogLevel"
+        DATA_LAKE_DATA_BUCKET_ARN:  !Ref DataLakeDataBucketArn
+        DATA_LAKE_DATA_BUCKET_NAME: !Ref DataLakeDataBucketName
+    # Tags coming in from sam deploy command.
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Resources.
+# ---------------------------------------------------------------------------------------------------------------------
+
+Resources:
+
+  # -------------------------------------------------------------------------------------------------------------------
+  # Lambda functions + roles + log groups for processing "new datalake raw data" events from Amazon SNS.
+  # -------------------------------------------------------------------------------------------------------------------
+
+  # Standard transcription functionality.
+
+  # FIXME: Write specific policies for this role so that the Lambda function has only access to what it needs to have.
+  # RunCallTranscriptionFunctionRole:
+  #   Description: "Execution role for RunCallTranscriptionFunction"
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     RoleName: !Sub "${AWS::Region}-${Stage}-${Workload}-${Service}-${RunCallTranscriptionFunctionName}Role"
+  #     AssumeRolePolicyDocument:
+  #       Statement:
+  #       - Effect: "Allow"
+  #         Principal:
+  #           Service: ["lambda.amazonaws.com"]
+  #         Action: "sts:AssumeRole"
+  #     Path: "/"
+  #     ManagedPolicyArns:
+  #       - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+  #       - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess"
+  #       - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonTranscribeFullAccess"
+
+  # RunCallTranscriptionFunction:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     FunctionName: !Sub "${Stage}-${Workload}-${Service}-${RunCallTranscriptionFunctionName}"
+  #     CodeUri: "src/"
+  #     Handler: "run_call_transcription.lambda_handler"
+  #     Environment:
+  #       Variables:
+  #         RAW_DATA_BUCKET_ARN:       !Ref DataLakeRawDataBucketArn
+  #         RAW_DATA_BUCKET_NAME:      !Ref DataLakeRawDataBucketName
+  #         PREPARED_DATA_BUCKET_ARN:  !Ref DataLakePreparedDataBucketArn
+  #         PREPARED_DATA_BUCKET_NAME: !Ref DataLakePreparedDataBucketName
+  #     # Policies:
+  #     #   - S3ReadPolicy:
+  #     #       BucketName: !Ref "DataLakeRawDataBucketName"
+  #     #   - S3WritePolicy:
+  #     #       BucketName: !Ref "DataLakePreparedDataBucketName"
+  #     Role: !GetAtt "RunCallTranscriptionFunctionRole.Arn"
+  #     Events:
+  #       MessageFromSnsEvent:
+  #         Type: SNS
+  #         Properties:
+  #           Topic: !Ref "NewDataLakeRawDataTopicArn"
+
+  # RunCallTranscriptionFunctionLogGroup:
+  #   Type: AWS::Logs::LogGroup
+  #   Properties:
+  #     LogGroupName: !Sub "/aws/lambda/${RunCallTranscriptionFunction}"
+  #     RetentionInDays: !Ref "LogRetentionInDays"
+  #     # Tags are not supported for AWS::Logs::LogGroup.
+
+  # Rename transcription response file functionality.
+
+  # FIXME: Write specific policies for this role so that the Lambda function has only access to what it needs to have.
+  # RenameTranscriptionResponseFunctionRole:
+  #   Description: "Execution role for RenameTranscriptionResponseFunction"
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     RoleName: !Sub "${AWS::Region}-${Stage}-${Workload}-${Service}-${RenameTranscriptionResponseFunctionName}Role"
+  #     AssumeRolePolicyDocument:
+  #       Statement:
+  #       - Effect: "Allow"
+  #         Principal:
+  #           Service: ["lambda.amazonaws.com"]
+  #         Action: "sts:AssumeRole"
+  #     Path: "/"
+  #     ManagedPolicyArns:
+  #       - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+  #       - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess"
+
+  # RenameTranscriptionResponseFunction:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     FunctionName: !Sub "${Stage}-${Workload}-${Service}-${RenameTranscriptionResponseFunctionName}"
+  #     CodeUri: "src/"
+  #     Handler: "rename_transcription_response.lambda_handler"
+  #     Environment:
+  #       Variables:
+  #         RAW_DATA_BUCKET_ARN:       !Ref DataLakeRawDataBucketArn
+  #         RAW_DATA_BUCKET_NAME:      !Ref DataLakeRawDataBucketName
+  #         PREPARED_DATA_BUCKET_ARN:  !Ref DataLakePreparedDataBucketArn
+  #         PREPARED_DATA_BUCKET_NAME: !Ref DataLakePreparedDataBucketName
+  #     # Policies:
+  #     #   - S3ReadPolicy:
+  #     #       BucketName: !Ref "DataLakeRawDataBucketName"
+  #     #   - S3WritePolicy:
+  #     #       BucketName: !Ref "DataLakePreparedDataBucketName"
+  #     Role: !GetAtt "RenameTranscriptionResponseFunctionRole.Arn"
+  #     Events:
+  #       MessageFromSnsEvent:
+  #         Type: SNS
+  #         Properties:
+  #           Topic: !Ref "NewDataLakeRawDataTopicArn"
+
+  # RenameTranscriptionResponseFunctionLogGroup:
+  #   Type: AWS::Logs::LogGroup
+  #   Properties:
+  #     LogGroupName: !Sub "/aws/lambda/${RenameTranscriptionResponseFunction}"
+  #     RetentionInDays: !Ref "LogRetentionInDays"
+  #     # Tags are not supported for AWS::Logs::LogGroup.
+
+  # Specific call analytics transcription job.
+
+  TranscribeDataAccessRole:
+    Description: "Data access role for Transcribe to execute start_call_analytics_job"
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::Region}-${Stage}-${Workload}-${Service}-TranscribeDataAccessRole"
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service: ["transcribe.amazonaws.com"]
+          Action: "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess"
+
+  # ----
+
+  # FIXME: Write specific policies for this role so that the Lambda function has only access to what it needs to have.
+  RunCallAnalyticsFunctionRole:
+    Description: "Execution role for RunCallAnalyticsFunction"
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::Region}-${Stage}-${Workload}-${Service}-${RunCallAnalyticsFunctionName}Role"
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service: ["lambda.amazonaws.com"]
+          Action: "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonTranscribeFullAccess"
+
+  RunCallAnalyticsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${Stage}-${Workload}-${Service}-${RunCallAnalyticsFunctionName}"
+      CodeUri: "src/"
+      Handler: "run_call_analytics.lambda_handler"
+      Environment:
+        Variables:
+          DATA_ACCESS_ROLE_ARN: !GetAtt "TranscribeDataAccessRole.Arn"
+      Role: !GetAtt "RunCallAnalyticsFunctionRole.Arn"
+      Events:
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - "aws.s3"
+              detail-type:
+                - "Object Created"
+              resources:
+                - !Ref DataLakeDataBucketArn
+              detail:
+                object:
+                  key:
+                    - "prefix": "contact-center/amazon-connect/call-recordings/raw/"
+
+  RunCallAnalyticsFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${RunCallAnalyticsFunction}"
+      RetentionInDays: !Ref "LogRetentionInDays"
+      # Tags are not supported for AWS::Logs::LogGroup.
+
+  # ----
+
+  # Create a nice HTML table as an overview of the results from the Transcribe call analytics.
+
+  # FIXME: Write specific policies for this role so that the Lambda function has only access to what it needs to have.
+  CreateHtmlOverviewFunctionRole:
+    Description: "Execution role for CreateHtmlOverviewFunction"
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::Region}-${Stage}-${Workload}-${Service}-${CreateHtmlOverviewFunctionName}Role"
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service: ["lambda.amazonaws.com"]
+          Action: "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess"
+
+  CreateHtmlOverviewFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${Stage}-${Workload}-${Service}-${CreateHtmlOverviewFunctionName}"
+      CodeUri: "src/"
+      Handler: "create_html_overview.lambda_handler"
+      Role: !GetAtt "CreateHtmlOverviewFunctionRole.Arn"
+      Events:
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - "aws.s3"
+              detail-type:
+                - "Object Created"
+              resources:
+                - !Ref DataLakeDataBucketArn
+              detail:
+                object:
+                  key:
+                    - "prefix": "contact-center/amazon-transcribe/call-analytics/raw/"
+
+  CreateHtmlOverviewFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${CreateHtmlOverviewFunction}"
+      RetentionInDays: !Ref "LogRetentionInDays"
+      # Tags are not supported for AWS::Logs::LogGroup.
+
+  # ----
+
+  CreateSplitTranscriptsFunctionRole:
+    Description: "Execution role for SplitTranscriptsFunction"
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::Region}-${Stage}-${Workload}-${Service}-${SplitTranscriptsFunctionName}Role"
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service: ["lambda.amazonaws.com"]
+          Action: "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess"
+
+  CreateSplitTranscriptsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${Stage}-${Workload}-${Service}-${SplitTranscriptsFunctionName}"
+      CodeUri: "src/"
+      Handler: "split_transcripts.lambda_handler"
+      Role: !GetAtt "CreateSplitTranscriptsFunctionRole.Arn"
+      Events:
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - "aws.s3"
+              detail-type:
+                - "Object Created"
+              resources:
+                - !Ref DataLakeDataBucketArn
+              detail:
+                object:
+                  key:
+                    - "prefix": "contact-center/amazon-transcribe/call-analytics/raw/"
+
+  CreateSplitTranscriptsFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${CreateSplitTranscriptsFunction}"
+      RetentionInDays: !Ref "LogRetentionInDays"
+      # Tags are not supported for AWS::Logs::LogGroup.
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Outputs.
+# ---------------------------------------------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------------------------------------------

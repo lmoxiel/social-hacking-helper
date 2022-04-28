@@ -1,0 +1,63 @@
+{
+    "key": "<some identifier for the text we have processed>",
+    "dominant_language": "en",
+    "entities": [
+        {
+            "type": "person",
+            "text": "Bob"
+        },
+        {
+            "type": "location",
+            "text": "London"
+        }
+    ],
+    "entities2": {
+        "person": [
+            "Bob",
+            "Paul"
+        ],
+        "location": [
+            "London",
+            "Madrid",
+            "Berlin"
+        ]
+    },
+    "key_phrases": [
+        "my name",
+        "Bob",
+        "a question"
+    ],
+    "sentiment": "neutral",
+    "syntax": [
+        {
+            "Text": "Hello",
+            "Tag": "INTJ"
+        },
+        {
+            "Text": "Sir",
+            "Tag": "PROPN"
+        },
+        {
+            "Text": "name",
+            "Tag": "NOUN"
+        },
+        {
+            "Text": "is",
+            "Tag": "VERB"
+        }
+    ],
+    "syntax2": {
+        "conjunction": [
+            "and"
+        ],
+        "noun": [
+            "name",
+            "chair"
+        ],
+        "verb": [
+            "is",
+            "carry",
+            "talk"
+        ]
+    }
+}

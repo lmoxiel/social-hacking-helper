@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AWS Speech AI Workshop for Utilities / Backoffice Services / Datalake Ingestion Service.
+  This service ingests data into the raw data tier of the data lake.
+  For this workshop, it means to ingest new call-recordings from the Amazon Connect bucket.
+
+# --------------------------------------------------------------------------------------------------
+# Parameters.
+# --------------------------------------------------------------------------------------------------
+
+Parameters:
+
+  # Standard parameters that should go into every service.
+
+  Stage:
+    Description: "Environment stage (dev, test, ..., prod)"
+    Type: "String"
+  Workload:
+    Description: "Short name of the overall workload this service belongs to"
+    Type: "String"
+  Context:
+    Description: "Short name of the context for this service (e.g. backoffice services versus business services)"
+    Type: "String"
+  Service:
+    Description: "Short name of this service"
+    Type: "String"
+  WorkloadLongName:
+    Description: "Long name of the overall workload this service belongs to"
+    Type: "String"
+  ContextLongName:
+    Description: "Long name of the context for this service (e.g. backoffice services versus business services)"
+    Type: "String"
+  ServiceLongName:
+    Description: "Long name of this service"
+    Type: "String"
+  LogLevel:
+    Description: "Log level for Lambda functions"
+    Type: "String"
+    Default: "DEBUG"
+  LogRetentionInDays:
+    Description: "CloudWatch Logs retention period"
+    Type: "Number"
+    Default: 7
+
+  # Parameters specific to this service.
+
+  IngestCallRecordingFunctionName:
+    Description: "Name suffix for the IngestCallRecordingFunction"
+    Type: "String"
+    Default: "ingest-call-recording"
+
+  # Parameters from AWS SSM Parameter Store for shared resources.
+
+  # NewContactCenterDataTopicArn:
+  #   Type: "AWS::SSM::Parameter::Value<String>"
+  #   Description: "ARN of the shared NewContactCenterDataTopic"
+  #   Default: "/dev/eecc/sns/new-contact-center-data/arn"
+  # NewContactCenterDataTopicName:
+  #   Type: "AWS::SSM::Parameter::Value<String>"
+  #   Description: "Name of the shared NewContactCenterDataTopic"
+  #   Default: "/dev/eecc/sns/new-contact-center-data/name"
+
+  ContactCenterDataBucketArn:
+    Type: "AWS::SSM::Parameter::Value<String>"
+    Description: "ARN of the shared ContactCenterDataBucket"
+    Default: "/dev/eecc/s3/cc-data/arn"
+  ContactCenterDataBucketName:
+    Type: "AWS::SSM::Parameter::Value<String>"
+    Description: "Name of the shared ContactCenterDataBucket"
+    Default: "/dev/eecc/s3/cc-data/name"
+
+  DataLakeDataBucketArn:
+    Type: "AWS::SSM::Parameter::Value<String>"
+    Description: "ARN of the shared DataLakeDataBucket"
+    Default: "/dev/eecc/s3/dl-data/arn"
+  DataLakeDataBucketName:
+    Type: "AWS::SSM::Parameter::Value<String>"
+    Description: "Name of the shared DataLakeDataBucket"
+    Default: "/dev/eecc/s3/dl-data/name"
+
+# --------------------------------------------------------------------------------------------------
+# Mappings.
+# --------------------------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------------------------------
+# Globals.
+# --------------------------------------------------------------------------------------------------
+
+Globals:
+
+  # Globals for serverless functions.
+
+  Function:
+    Runtime: "python3.8"
+    Timeout: 5
+    Tracing: "Active"
+    MemorySize: 512
+    Environment:
+      Variables:
+        STAGE:              !Ref "Stage"
+        WORKLOAD:           !Ref "Workload"
+        CONTEXT:            !Ref "Context"
+        SERVICE:            !Ref "Service"
+        WORKLOAD_LONG_NAME: !Ref "WorkloadLongName"
+        CONTEXT_LONG_NAME:  !Ref "ContextLongName"
+        SERVICE_LONG_NAME:  !Ref "ServiceLongName"
+        LOG_LEVEL:          !Ref "LogLevel"
+        CONTACT_CENTER_DATA_BUCKET_ARN:  !Ref ContactCenterDataBucketArn
+        CONTACT_CENTER_DATA_BUCKET_NAME: !Ref ContactCenterDataBucketName
+        DATA_LAKE_DATA_BUCKET_ARN:       !Ref DataLakeDataBucketArn
+        DATA_LAKE_DATA_BUCKET_NAME:      !Ref DataLakeDataBucketName
+    # Tags coming in from sam deploy command.
+
+# --------------------------------------------------------------------------------------------------
+# Resources.
+# --------------------------------------------------------------------------------------------------
+
+Resources:
+
+  # Lambda function + log group for processing EventBridge events about a new call recording".
+
+  IngestCallRecordingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${Stage}-${Workload}-${Service}-${IngestCallRecordingFunctionName}"
+      CodeUri: "src/"
+      Handler: "ingest_call_recording.lambda_handler"
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref "ContactCenterDataBucketName"
+        - S3WritePolicy:
+            BucketName: !Ref "DataLakeDataBucketName"
+      Events:
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - "aws.s3"
+              detail-type:
+                - "Object Created"
+              resources:
+                - !Ref ContactCenterDataBucketArn
+              detail:
+                object:
+                  key:
+                    - "prefix": !Sub "connect/${AWS::AccountId}-${AWS::Region}/CallRecordings/"
+
+  IngestCallRecordingFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${IngestCallRecordingFunction}"
+      RetentionInDays: !Ref "LogRetentionInDays"
+      # Tags are not supported for AWS::Logs::LogGroup.
+
+# --------------------------------------------------------------------------------------------------
+# Outputs.
+# --------------------------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------------------------------
