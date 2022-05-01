@@ -89,11 +89,11 @@ Parameters:
   AthenaBucketArn:
     Type: "AWS::SSM::Parameter::Value<String>"
     Description: "ARN of the shared AthenaBucket"
-    Default: "/dev/eecc/s3/athena-bucket/arn"
+    Default: "/dev/eecc/s3/athena-data/arn"
   AthenaBucketName:
     Type: "AWS::SSM::Parameter::Value<String>"
     Description: "Name of the shared AthenaBucket"
-    Default: "/dev/eecc/s3/athena-bucket/name"
+    Default: "/dev/eecc/s3/athena-data/name"
 
 
 # ---------------------------------------------------------------------------------------------------------------------
