@@ -4,6 +4,29 @@ echo "--------------------------------------------------------------------------
 echo "Deploying Speech AI workshop services"
 echo "--------------------------------------------------------------------------------"
 
+# Evaluate command line args.
+DEF_ALL="all"
+DEF_EE="ee"
+MODE=""
+
+if [ $# -ne 1 ]; then
+    echo "You have to provide either '$DEF_ALL' or '$DEF_EE' as command line argument."
+    echo "'all' means that all services are deployed and you use that when you bring your own AWS account."
+    echo "'ee' means you're on an AWS event and AWS provides accounts."
+    exit 0
+fi
+
+if [ "$1" = "$DEF_ALL" ]; then
+    echo "In own-account mode."
+    MODE=$DEF_ALL
+elif [ "$1" = "$DEF_EE" ]; then
+    echo "In EventEngine mode."
+    MODE=$DEF_EE
+else
+    echo "Unknown parameter $1"
+    exit 0
+fi
+
 # Prepare AWS account details.
 echo "--------------------------------------------------------------------------------"
 echo "Fetching AWS account details"
@@ -37,19 +60,31 @@ echo "SAM_WORKLOAD_LONG  = "$SAM_WORKLOAD_LONG
 # FIXME: For all stages beyond DEV, we need to override some CloudFormation template parameters!
 
 # Execute deploy.sh for each service context.
-echo "--------------------------------------------------------------------------------"
-echo "Deploying service 0-account-preparation"
-echo "--------------------------------------------------------------------------------"
-cd "0-account-preparation"
-source "./deploy.sh"
-cd ../
+if [ "$MODE" = "$DEF_ALL" ]; then
+    echo "--------------------------------------------------------------------------------"
+    echo "Deploying service 0-account-preparation"
+    echo "--------------------------------------------------------------------------------"
+    cd "0-account-preparation"
+    source "./deploy.sh"
+    cd ../
+else
+    echo "--------------------------------------------------------------------------------"
+    echo "Skipping service 0-account-preparation"
+    echo "--------------------------------------------------------------------------------"
+fi
 
-echo "--------------------------------------------------------------------------------"
-echo "Deploying service 1-application-preparation"
-echo "--------------------------------------------------------------------------------"
-cd "1-application-preparation"
-source "./deploy.sh"
-cd ../
+if [ "$MODE" = "$DEF_ALL" ]; then
+    echo "--------------------------------------------------------------------------------"
+    echo "Deploying service 1-application-preparation"
+    echo "--------------------------------------------------------------------------------"
+    cd "1-application-preparation"
+    source "./deploy.sh"
+    cd ../
+else
+    echo "--------------------------------------------------------------------------------"
+    echo "Skipping service 1-application-preparation"
+    echo "--------------------------------------------------------------------------------"
+fi
 
 echo "--------------------------------------------------------------------------------"
 echo "Deploying service 2-datalake-ingestion-service"
