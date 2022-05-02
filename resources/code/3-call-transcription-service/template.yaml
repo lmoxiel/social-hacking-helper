@@ -283,7 +283,7 @@ Resources:
     Description: "Execution role for RunCallAnalyticsFunction"
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${AWS::Region}-${Stage}-${Workload}-${Service}-${RunCallAnalyticsFunctionName}Role"
+      RoleName: !Sub "${AWS::Region}-${Stage}-${Workload}-${Service}-${RunCallAnalyticsFunctionName}-role"
       AssumeRolePolicyDocument:
         Statement:
         - Effect: "Allow"
@@ -295,6 +295,14 @@ Resources:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess"
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonTranscribeFullAccess"
+      Policies:
+        - PolicyName: my-pass-role-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ["iam:GetRole", "iam:PassRole"]
+                Resource: !GetAtt "TranscribeDataAccessRole.Arn"
 
   RunCallAnalyticsFunction:
     Type: AWS::Serverless::Function
