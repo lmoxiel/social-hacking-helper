@@ -5,13 +5,13 @@ AWSTemplateFormatVersion: '2010-09-09'
 # export SAM_AWS_PROFILE=<the-profile-name-in-your-credentials-file>
 # export SAM_STAGE=dev
 # export SAM_BUCKET_NAME=$SAM_AWS_ACCOUNT_ID-$SAM_AWS_REGION-sam-cli-source-bucket
-# export SAM_WORKLOAD=eecc
-# export SAM_WORKLOAD_LONG=elvish-electrons-customer-care
+# export SAM_WORKLOAD=shh
+# export SAM_WORKLOAD_LONG=social-hacking-helper
 
 # --------------------------------------------------------------------------------------------------
 
 Description: >
-  Speech AI workshop.
+  Social Hacking Helper.
   Template to setup AWS Cloud9 for the workshop + make some infrastructure preparations in the AWS account.
 
 # --------------------------------------------------------------------------------------------------
@@ -25,19 +25,19 @@ Parameters:
   Workload:
     Description: "Short name of the overall workload this service belongs to"
     Type: "String"
-    Default: "eecc"
+    Default: "shh"
   Context:
     Description: "Short name of the context for this service (e.g. backoffice services versus business services)"
     Type: "String"
-    Default: "auxs"
+    Default: "shh-service"
   WorkloadLongName:
     Description: "Long name of the overall workload this service belongs to"
     Type: "String"
-    Default: "elvish-electrons-customer-care"
+    Default: "social-hacking-helper"
   ContextLongName:
     Description: "Long name of the context for this service (e.g. backoffice services versus business services)"
     Type: "String"
-    Default: "auxiliary-services"
+    Default: "social-hacking-helper-service"
   LogLevel:
     Description: "Log level for Lambda functions"
     Type: "String"
@@ -45,24 +45,24 @@ Parameters:
   LogRetentionInDays:
     Description: "CloudWatch Logs retention in days"
     Type: "Number"
-    Default: 7
+    Default: 14
 
   ContactCenterDataBucketName:
     Description: "Name suffix (w/o prefixes for acct ID, region, stage, workload) for contact center data bucket"
     Type: "String"
     # Reducing the long name suffix to an abbreviation, otherwise we will likely exceed the max length of 63 chars.
     #Default: "contact-center-data-bucket"
-    Default: "cc-data"
+    Default: "shh-cc-data"
   DataLakeDataBucketName:
     Description: "Name suffix (w/o prefixes for acct ID, region, stage, workload) for the data lake data bucket"
     Type: "String"
     # Reducing the long name suffix to an abbreviation, otherwise we will likely exceed the max length of 63 chars.
     #Default: "datalake-raw-data-bucket"
-    Default: "dl-data"
+    Default: "shh-dl-data"
   AthenaBucketName:
     Description: "Name suffix (w/o prefixes for acct ID, region, stage, workload) for the Athena data bucket"
     Type: "String"
-    Default: "athena-data"
+    Default: "shh-athena-data"
 
   Cloud9CidrBlock:
     Description: The CIDR block range for your Cloud9 IDE VPC
@@ -71,7 +71,7 @@ Parameters:
   GitRepositoryURL:
     Description: The Git repository URL for the project we are cloning
     Type: String
-    Default: https://github.com/dirk-froehner/speechai-workshop.git
+    Default: https://github.com/lmoxiel/social-hacking-helper.git
 
 # --------------------------------------------------------------------------------------------------
 
@@ -295,10 +295,10 @@ Resources:
     Type: AWS::Cloud9::EnvironmentEC2
     Properties:
       AutomaticStopTimeMinutes: 30
-      Description: "Speech AI Workshop - Development Environment"
+      Description: "Social Hacking Helper - Development Environment"
       InstanceType: t3.micro
       ImageId: amazonlinux-2-x86_64
-      Name: !Sub "Workshop-IDE-${AWS::StackName}"
+      Name: !Sub "SHH-IDE-${AWS::StackName}"
       Repositories:
         - PathComponent: /speechai-workshop
           RepositoryUrl: !Ref GitRepositoryURL
